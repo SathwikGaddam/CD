@@ -41,3 +41,17 @@ int yywrap()
 {
     return 1;
 }
+
+
+
+
+/* 
+ 
+ How to RUn 
+
+  vi filename.l
+  flex filename.l
+  gcc lex.yy.c
+  ./a.out
+Enter input : code (press enter after writing code u will get ouput)
+*/
