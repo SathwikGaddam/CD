@@ -1,204 +1,169 @@
-#include <bits/stdc++.h>
+
+#include <iostream>
+#include <string>
+#include <vector>
 using namespace std;
 
-vector<pair<char, string>> grammar;
-set<char> nonterms, terms, symbols;
-map<char, set<char>> firstSet;
-map<pair<int, char>, string> action;
-map<pair<int, char>, int> goTo;
+// ACTION function
+int action(int state, char ch)
+{
+    switch(state)
+    {
+        case 0:
+        case 1:
+        case 3:
+            if(ch == 'c')
+                return 3;
+            if(ch == 'd')
+                return 4;
+            break;
 
-using Item = tuple<int, int, char>;
+        case 2:
+            if(ch == '$')
+                return 100;
+            break;
 
-set<char> firstOfString(string s) {
-    if (s.empty()) return {'#'};
-    set<char> res;
-    for (char c : s) {
-        set<char> temp = nonterms.count(c) ? firstSet[c] : set<char>{c};
-        for (char x : temp) if (x != '#') res.insert(x);
-        if (!temp.count('#')) return res;
+        case 4:
+            if(ch == 'c' || ch == 'd' || ch == '$')
+                return -3;
+            break;
+
+        case 5:
+            if(ch == '$')
+                return -1;
+            break;
+
+        case 6:
+            if(ch == 'c' || ch == 'd' || ch == '$')
+                return -2;
+            break;
     }
-    res.insert('#');
-    return res;
+
+    return 0;
 }
 
-set<Item> closure(set<Item> items) {
-    for (bool chg = true; chg; ) {
-        chg = false;
-        set<Item> next = items;
-        for (auto [p, dot, la] : items) {
-            string& rhs = grammar[p].second;
-            if (dot >= rhs.size() || !nonterms.count(rhs[dot])) continue;
-            for (char b : firstOfString(rhs.substr(dot + 1) + la))
-                if (b != '#')
-                    for (int i = 1; i < grammar.size(); i++)
-                        if (grammar[i].first == rhs[dot])
-                            chg |= next.insert({i, 0, b}).second;
-        }
-        items = next;
-    }
-    return items;
+// GOTO function
+int goTo(int state, char ch)
+{
+    if(state == 0 && ch == 'C')
+        return 1;
+
+    if(state == 0 && ch == 'S')
+        return 2;
+
+    if(state == 1 && ch == 'C')
+        return 5;
+
+    if(state == 3 && ch == 'C')
+        return 6;
+
+    return -1;
 }
 
-set<Item> gotoState(const set<Item>& items, char sym) {
-    set<Item> res;
-    for (auto [p, dot, la] : items)
-        if (dot < grammar[p].second.size() && grammar[p].second[dot] == sym)
-            res.insert({p, dot + 1, la});
-    return res.empty() ? res : closure(res);
-}
-
-bool addAction(int s, char sym, string val) {
-    if (action.count({s, sym}) && action[{s, sym}] != val) return false;
-    action[{s, sym}] = val;
-    return true;
-}
-
-int main() {
-    int n;
-    cout << "Enter number of productions: ";
-    cin >> n;
-    cout << "Enter productions (S->CC):\n";
-
-    for (int i = 0; i < n; i++) {
-        string s, p;
-        cin >> s;
-        char lhs = s[0];
-        nonterms.insert(lhs);
-        if (i == 0) grammar.push_back({'@', string(1, lhs)}); // '@' represents S'
-        stringstream ss(s.substr(3));
-        while (getline(ss, p, '|'))
-            grammar.push_back({lhs, p == "#" ? "" : p});
-    }
-
-    for (auto& [lhs, rhs] : grammar)
-        for (char c : rhs)
-            if (!nonterms.count(c)) terms.insert(c);
-
-    symbols = terms;
-    symbols.insert(nonterms.begin(), nonterms.end());
-
-    // Calculate FIRST
-    for (bool chg = true; chg; ) {
-        chg = false;
-        for (int i = 1; i < grammar.size(); i++)
-            for (char c : firstOfString(grammar[i].second))
-                chg |= firstSet[grammar[i].first].insert(c).second;
-    }
-
-    // Build Canonical LR(1) Collection
-    vector<set<Item>> states = {closure({{0, 0, '$'}} )};
-    map<pair<int, char>, int> trans;
-
-    for (int i = 0; i < states.size(); i++) {
-        for (char sym : symbols) {
-            set<Item> nxt = gotoState(states[i], sym);
-            if (nxt.empty()) continue;
-            auto it = find(states.begin(), states.end(), nxt);
-            int id = it - states.begin();
-            if (it == states.end()) states.push_back(nxt);
-            trans[{i, sym}] = id;
-        }
-    }
-
-    // Merge LR(1) states with identical LR(0) cores into LALR(1) states
-    map<set<pair<int, int>>, int> coreMap;
-    vector<set<Item>> merged;
-    vector<int> grp(states.size());
-
-    for (int i = 0; i < states.size(); i++) {
-        set<pair<int, int>> core;
-        for (auto [p, dot, la] : states[i]) core.insert({p, dot});
-        if (!coreMap.count(core)) {
-            coreMap[core] = merged.size();
-            merged.push_back({});
-        }
-        grp[i] = coreMap[core];
-        merged[grp[i]].insert(states[i].begin(), states[i].end());
-    }
-
-    map<pair<int, char>, int> newTrans;
-    for (auto [k, v] : trans) newTrans[{grp[k.first], k.second}] = grp[v];
-    states = merged;
-    trans = newTrans;
-
-    cout << "\nNumber of LALR States: " << states.size() << "\n";
-
-    // Build ACTION and GOTO tables
-    for (int i = 0; i < states.size(); i++) {
-        for (auto [p, dot, la] : states[i]) {
-            string& rhs = grammar[p].second;
-            if (dot < rhs.size()) {
-                char ch = rhs[dot];
-                if (terms.count(ch) && !addAction(i, ch, "S" + to_string(trans[{i, ch}])))
-                    return cout << "\nGrammar is not LALR(1)\n", 0;
-                if (nonterms.count(ch)) goTo[{i, ch}] = trans[{i, ch}];
-            } else if (p == 0 && la == '$') {
-                if (!addAction(i, '$', "ACC")) return cout << "\nGrammar is not LALR(1)\n", 0;
-            } else if (!addAction(i, la, "R" + to_string(p))) {
-                return cout << "\nGrammar is not LALR(1)\n", 0;
-            }
-        }
-    }
-
-    // Display Tables
-    set<char> cols = terms;
-    cols.insert('$');
-    cout << "\nACTION TABLE\nState\t";
-    for (char c : cols) cout << c << "\t";
-    cout << "\n";
-    for (int i = 0; i < states.size(); i++) {
-        cout << i << "\t";
-        for (char c : cols) cout << (action.count({i, c}) ? action[{i, c}] : "-") << "\t";
-        cout << "\n";
-    }
-
-    cout << "\nGOTO TABLE\nState\t";
-    for (char c : nonterms) cout << c << "\t";
-    cout << "\n";
-    for (int i = 0; i < states.size(); i++) {
-        cout << i << "\t";
-        for (char c : nonterms) cout << (goTo.count({i, c}) ? to_string(goTo[{i, c}]) : "-") << "\t";
-        cout << "\n";
-    }
-
-    // Parse Input String
-    string input;
-    cout << "\nEnter input string: ";
-    cin >> input;
+// Parsing function
+void parse(string input)
+{
     input += '$';
 
-    vector<int> st = {0};
-    int idx = 0;
-    cout << "\nPARSER TRACE TABLE\n" << left << setw(25) << "STACK" << setw(20) << "INPUT" << "ACTION\n";
+    vector<int> st;
+    st.push_back(0);
 
-    while (true) {
-        string stStr;
-        for (int x : st) stStr += to_string(x) + " ";
-        int curState = st.back();
-        char curSym = input[idx];
+    int i = 0;
 
-        cout << left << setw(25) << stStr << setw(20) << input.substr(idx);
-        if (!action.count({curState, curSym})) {
-            cout << "ERROR\n\nString Rejected\n";
-            break;
+    cout << "\nParsing Steps:\n";
+
+    while(i < input.length())
+    {
+        int s = st.back();
+        char ch = input[i];
+
+        int act = action(s, ch);
+
+        cout << "State: " << s
+             << " Input: " << input.substr(i);
+
+        // Error condition
+        if(act == 0)
+        {
+            cout << " Action: ERROR\n";
+            cout << "\nString Rejected!\n";
+            return;
         }
 
-        string op = action[{curState, curSym}];
-        if (op == "ACC") {
-            cout << "ACCEPT\n\nString Accepted\n";
-            break;
-        } else if (op[0] == 'S') {
-            int nxt = stoi(op.substr(1));
-            cout << "SHIFT " << nxt << "\n";
-            st.push_back(nxt);
-            idx++;
-        } else {
-            int p = stoi(op.substr(1));
-            auto [lhs, rhs] = grammar[p];
-            cout << "REDUCE " << lhs << "->" << (rhs.empty() ? "#" : rhs) << "\n";
-            st.resize(st.size() - rhs.size());
-            st.push_back(goTo[{st.back(), lhs}]);
+        // Accept condition
+        if(act == 100)
+        {
+            cout << " Action: ACCEPT\n";
+            cout << "\nString Accepted!\n";
+            return;
+        }
+
+        // Shift operation
+        if(act > 0)
+        {
+            cout << " Action: s" << act << "\n";
+
+            st.push_back(act);
+            i++;
+        }
+
+        // Reduce operation
+        else
+        {
+            int p = -act;
+            int len;
+
+            if(p == 1)
+            {
+                cout << " Action: r1 (S -> CC)\n";
+                len = 2;
+            }
+            else if(p == 2)
+            {
+                cout << " Action: r2 (C -> cC)\n";
+                len = 2;
+            }
+            else
+            {
+                cout << " Action: r3 (C -> d)\n";
+                len = 1;
+            }
+
+            // Pop states
+            while(len--)
+            {
+                st.pop_back();
+            }
+
+            // Find next state using GOTO
+            int ns = goTo(st.back(),
+                          p == 1 ? 'S' : 'C');
+
+            if(ns == -1)
+            {
+                cout << "\nString Rejected!\n";
+                return;
+            }
+
+            st.push_back(ns);
         }
     }
+}
+
+// Main function
+int main()
+{
+    string input;
+
+    cout << "Grammar:\n";
+    cout << "S -> CC\n";
+    cout << "C -> cC\n";
+    cout << "C -> d\n";
+
+    cout << "\nEnter input string: ";
+    cin >> input;
+
+    parse(input);
+
     return 0;
 }
