@@ -23,6 +23,12 @@ int yywrap() {
     return 1;
 }
 
+
+// run
+vi file.l
+flex file.l
+gcc lex.yy.c
+./a.out
 int main() {
     yylex();
     return 0;
