@@ -23,13 +23,14 @@ int yywrap() {
     return 1;
 }
 
+int main() {
+    yylex();
+    return 0;
+}
+
 
 // run
 vi file.l
 flex file.l
 gcc lex.yy.c
 ./a.out
-int main() {
-    yylex();
-    return 0;
-}
